@@ -84,11 +84,12 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
+		<PackageReference Include="ComputeSharp" Version="3.2.0" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-			<_Parameter1>FacetedGlass.Tests</_Parameter1>
+			<_Parameter1>TopologicalMaterialField.Tests</_Parameter1>
 		</AssemblyAttribute>
 	</ItemGroup>
 

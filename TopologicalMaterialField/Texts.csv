@@ -1,0 +1,58 @@
+Key,Parameter,ja-jp,en-us,zh-cn,zh-tw,ko-kr,es-es,ar-sa,id-id
+TopologicalMaterialField,,位相材質場,Topological Material Field,拓扑材质场,拓撲材質場,위상 재질장,Campo de material topológico,حقل المادة الطوبولوجي,Medan Material Topologis
+BasicGroup,,基本,Basic,基本,基本,기본,Básico,أساسي,Dasar
+TopologyGroup,,位相構造,Topology,拓扑结构,拓撲結構,위상 구조,Topología,الطوبولوجيا,Topologi
+DistributionGroup,,材質分布,Material Distribution,材质分布,材質分佈,재질 분포,Distribución de material,توزيع المادة,Distribusi Material
+PatternGroup,,微細構造,Microstructure,微观结构,微觀結構,미세 구조,Microestructura,البنية المجهرية,Mikrostruktur
+ReconstructionGroup,,階調再構成,Tone Reconstruction,明暗重建,明暗重建,명암 재구성,Reconstrucción tonal,إعادة بناء الدرجات,Rekonstruksi Nada
+LightingGroup,,照明,Lighting,照明,照明,조명,Iluminación,الإضاءة,Pencahayaan
+Amount,,強さ,Amount,强度,強度,강도,Intensidad,القوة,Kekuatan
+AmountDescription,,元映像と生成された材質場の合成量です,Controls the blend between the source and generated material field.,控制原始画面与生成材质场的混合量。,控制原始畫面與生成材質場的混合量。,원본과 생성된 재질장의 합성량입니다.,Controla la mezcla entre la fuente y el campo generado.,يتحكم في مزج المصدر مع حقل المادة الناتج.,Mengatur campuran sumber dan medan material yang dihasilkan.
+Material,,材質,Material,材质,材質,재질,Material,المادة,Material
+MaterialDescription,,分布輸送と表面応答に使用する材質モデルです,Selects the material model used for distribution transport and surface response.,选择用于分布传输和表面响应的材质模型。,選擇用於分佈傳輸和表面響應的材質模型。,분포 수송과 표면 반응에 사용할 재질 모델입니다.,Selecciona el modelo usado para el transporte y la respuesta superficial.,يحدد نموذج المادة المستخدم لنقل التوزيع واستجابة السطح.,Memilih model material untuk transportasi distribusi dan respons permukaan.
+Quality,,品質,Quality,质量,品質,품질,Calidad,الجودة,Kualitas
+QualityDescription,,領域標本数と反復回数を選びます,Selects region sample counts and solver iterations.,选择区域采样数和求解迭代次数。,選擇區域取樣數和求解迭代次數。,영역 표본 수와 반복 횟수를 선택합니다.,Selecciona las muestras regionales y las iteraciones.,يحدد عدد عينات المناطق وتكرارات الحل.,Memilih jumlah sampel wilayah dan iterasi pemecah.
+TopologyScale,,位相尺度,Topology Scale,拓扑尺度,拓撲尺度,위상 척도,Escala topológica,مقياس الطوبولوجيا,Skala Topologi
+TopologyScaleDescription,,勾配流を構成する輝度地形の平滑化尺度です,Sets the smoothing scale of the luminance terrain used by gradient flow.,设置用于梯度流的亮度地形平滑尺度。,設定用於梯度流的亮度地形平滑尺度。,기울기 흐름에 쓰는 휘도 지형의 평활 척도입니다.,Define el suavizado del terreno de luminancia.,يضبط تنعيم تضاريس السطوع المستخدمة في تدفق التدرج.,Mengatur skala penghalusan medan luminansi.
+FeatureThreshold,,特徴閾値,Feature Threshold,特征阈值,特徵閾值,특징 임계값,Umbral de rasgo,عتبة الميزة,Ambang Fitur
+FeatureThresholdDescription,,微小な勾配を停留点として扱う閾値です,Sets the gradient threshold treated as a stationary point.,设置将微小梯度视为驻点的阈值。,設定將微小梯度視為駐點的閾值。,작은 기울기를 정지점으로 처리하는 임계값입니다.,Define el umbral de gradiente considerado estacionario.,يضبط عتبة التدرج التي تعامل كنقطة ثابتة.,Mengatur ambang gradien yang dianggap sebagai titik diam.
+Distribution,,分布輸送,Distribution Transport,分布传输,分佈傳輸,분포 수송,Transporte de distribución,نقل التوزيع,Transportasi Distribusi
+DistributionDescription,,領域内の色と構造の経験分布を材質分布へ写す強さです,Controls empirical color and structure transport inside each region.,控制区域内颜色与结构经验分布向材质分布的传输强度。,控制區域內色彩與結構經驗分佈向材質分佈的傳輸強度。,영역 안의 색과 구조 경험 분포를 재질 분포로 옮기는 강도입니다.,Controla el transporte de color y estructura dentro de cada región.,يتحكم في نقل توزيع اللون والبنية داخل كل منطقة.,Mengatur transportasi distribusi warna dan struktur di setiap wilayah.
+ColorVariation,,色変動,Color Variation,色彩变化,色彩變化,색 변화,Variación de color,تباين اللون,Variasi Warna
+ColorVariationDescription,,材質分布の色幅と中心色への移行量です,Controls material color spread and movement toward its center color.,控制材质色彩范围和向中心色的移动量。,控制材質色彩範圍和向中心色的移動量。,재질 분포의 색 폭과 중심색 이동량입니다.,Controla la amplitud cromática y el color central.,يتحكم في مدى اللون والانتقال نحو اللون المركزي.,Mengatur rentang warna dan pergeseran menuju warna pusat.
+PatternScale,,模様サイズ,Pattern Scale,纹理大小,紋理大小,무늬 크기,Escala del patrón,حجم النمط,Skala Pola
+PatternScaleDescription,,反応拡散の標本間隔と初期核の大きさです,Sets reaction diffusion spacing and seed size.,设置反应扩散间距和初始核大小。,設定反應擴散間距和初始核大小。,반응 확산 간격과 초기 핵의 크기입니다.,Define el espaciado y el tamaño de semillas.,يضبط تباعد الانتشار التفاعلي وحجم البذور.,Mengatur jarak reaksi difusi dan ukuran inti awal.
+PatternStrength,,模様強度,Pattern Strength,纹理强度,紋理強度,무늬 강도,Intensidad del patrón,قوة النمط,Kekuatan Pola
+PatternStrengthDescription,,反応拡散模様が色と凹凸へ与える量です,Controls how reaction diffusion affects color and relief.,控制反应扩散纹理对色彩和凹凸的影响。,控制反應擴散紋理對色彩和凹凸的影響。,반응 확산 무늬가 색과 요철에 미치는 양입니다.,Controla cómo el patrón afecta al color y relieve.,يتحكم في تأثير نمط الانتشار على اللون والتضاريس.,Mengatur pengaruh pola reaksi difusi pada warna dan relief.
+Reconstruction,,再構成,Reconstruction,重建,重建,재구성,Reconstrucción,إعادة البناء,Rekonstruksi
+ReconstructionDescription,,screened Poisson 方程式で位相構造と材質階調を統合する強さです,Controls screened Poisson integration of topology and material tone.,控制通过屏蔽泊松方程整合拓扑结构与材质明暗的强度。,控制透過屏蔽泊松方程整合拓撲結構與材質明暗的強度。,screened Poisson 방정식으로 위상 구조와 재질 명암을 통합하는 강도입니다.,Controla la integración de topología y tono mediante Poisson apantallado.,يتحكم في دمج الطوبولوجيا ودرجات المادة بمعادلة بواسون المحجوبة.,Mengatur integrasi topologi dan nada material dengan Poisson tersaring.
+Relief,,凹凸,Relief,凹凸,凹凸,요철,Relieve,التضاريس,Relief
+ReliefDescription,,再構成された高さ場から作る表面法線の強さです,Controls surface normals derived from the reconstructed height field.,控制由重建高度场生成的表面法线强度。,控制由重建高度場生成的表面法線強度。,재구성된 높이장에서 만드는 표면 법선의 강도입니다.,Controla las normales derivadas del campo reconstruido.,يتحكم في اتجاهات السطح المشتقة من حقل الارتفاع.,Mengatur normal permukaan dari medan tinggi yang direkonstruksi.
+LightAngle,,光源角度,Light Angle,光源角度,光源角度,광원 각도,Ángulo de luz,زاوية الضوء,Sudut Cahaya
+LightAngleDescription,,画像平面上の光源方向です,Sets the light direction in the image plane.,设置图像平面上的光源方向。,設定影像平面上的光源方向。,영상 평면의 광원 방향입니다.,Define la dirección de la luz en el plano.,يضبط اتجاه الضوء على مستوى الصورة.,Mengatur arah cahaya pada bidang gambar.
+LightElevation,,光源高度,Light Elevation,光源高度,光源高度,광원 고도,Elevación de luz,ارتفاع الضوء,Ketinggian Cahaya
+LightElevationDescription,,材質表面に対する光源の高さです,Sets the elevation of the light above the material surface.,设置光源相对材质表面的高度。,設定光源相對材質表面的高度。,재질 표면에 대한 광원의 높이입니다.,Define la elevación sobre la superficie.,يضبط ارتفاع الضوء فوق سطح المادة.,Mengatur ketinggian cahaya di atas permukaan material.
+Seed,,シード,Seed,种子,種子,시드,Semilla,البذرة,Seed
+SeedDescription,,領域標本と反応拡散の初期状態を決める固定値です,Sets deterministic region samples and reaction diffusion seeds.,设置确定性的区域采样和反应扩散初始状态。,設定確定性的區域取樣和反應擴散初始狀態。,결정론적 영역 표본과 반응 확산 초기 상태를 정합니다.,Define muestras y semillas deterministas.,يضبط عينات المناطق وبذور الانتشار بصورة حتمية.,Mengatur sampel wilayah dan inti reaksi difusi secara deterministik.
+MaterialCeramic,,陶器,Ceramic,陶瓷,陶瓷,도자기,Cerámica,خزف,Keramik
+MaterialCeramicDescription,,滑らかな暖色の素地と硬い鏡面反射です,Smooth warm body with a hard specular response.,平滑暖色基底和硬质镜面反射。,平滑暖色基底和硬質鏡面反射。,매끄러운 난색 바탕과 단단한 정반사입니다.,Cuerpo cálido y reflejo especular duro.,جسم دافئ ناعم وانعكاس لامع صلب.,Dasar hangat halus dengan pantulan keras.
+MaterialMineral,,鉱物,Mineral,矿物,礦物,광물,Mineral,معدن,Mineral
+MaterialMineralDescription,,彩度幅が広い結晶質の材質分布です,Crystalline distribution with broad chroma variation.,具有宽色度变化的晶质分布。,具有寬色度變化的晶質分佈。,채도 폭이 넓은 결정질 재질 분포입니다.,Distribución cristalina con amplia variación cromática.,توزيع بلوري واسع التباين اللوني.,Distribusi kristalin dengan variasi kroma luas.
+MaterialOxidizedMetal,,酸化金属,Oxidized Metal,氧化金属,氧化金屬,산화 금속,Metal oxidado,معدن مؤكسد,Logam Teroksidasi
+MaterialOxidizedMetalDescription,,金属反射と酸化層の暖色分布を組み合わせます,Combines metallic response with a warm oxide distribution.,结合金属反射与暖色氧化层分布。,結合金屬反射與暖色氧化層分佈。,금속 반사와 산화층의 난색 분포를 결합합니다.,Combina respuesta metálica y una capa cálida de óxido.,يجمع الاستجابة المعدنية مع توزيع أكسيد دافئ.,Menggabungkan respons logam dengan lapisan oksida hangat.
+MaterialParchment,,羊皮紙,Parchment,羊皮纸,羊皮紙,양피지,Pergamino,رق,Parchment
+MaterialParchmentDescription,,暖色の繊維質分布と柔らかな反射です,Warm fibrous distribution with a soft surface response.,暖色纤维分布和柔和表面响应。,暖色纖維分佈和柔和表面響應。,난색 섬유질 분포와 부드러운 반사입니다.,Distribución fibrosa cálida y respuesta suave.,توزيع ليفي دافئ واستجابة سطحية ناعمة.,Distribusi serat hangat dengan respons lembut.
+MaterialIceCrystal,,氷晶,Ice Crystal,冰晶,冰晶,얼음 결정,Cristal de hielo,بلور جليدي,Kristal Es
+MaterialIceCrystalDescription,,寒色の透明感と鋭い鏡面反射です,Cool translucent color distribution with a sharp specular response.,冷色通透分布和锐利镜面反射。,冷色通透分佈和銳利鏡面反射。,한색의 투명감과 날카로운 정반사입니다.,Distribución fría y reflejo especular agudo.,توزيع لوني بارد وانعكاس لامع حاد.,Distribusi warna dingin dengan pantulan tajam.
+MaterialTextile,,布地,Textile,织物,織物,직물,Textil,نسيج,Tekstil
+MaterialTextileDescription,,交差する織り目と低い鏡面反射です,Crossed weave structure with a low specular response.,交叉织纹结构和低镜面反射。,交叉織紋結構和低鏡面反射。,교차하는 직조 구조와 낮은 정반사입니다.,Trama cruzada con poco brillo especular.,بنية نسج متقاطعة وانعكاس لامع منخفض.,Struktur tenun silang dengan pantulan rendah.
+QualityBalanced,,標準,Balanced,标准,標準,표준,Equilibrada,متوازنة,Seimbang
+QualityBalancedDescription,,標本数と反復回数を抑えた設定です,Uses reduced sample and iteration counts.,使用较少的采样数和迭代次数。,使用較少的取樣數和迭代次數。,표본 수와 반복 횟수를 줄인 설정입니다.,Usa menos muestras e iteraciones.,يستخدم عددا أقل من العينات والتكرارات.,Menggunakan sampel dan iterasi yang lebih sedikit.
+QualityHigh,,高品質,High,高质量,高品質,고품질,Alta,عالية,Tinggi
+QualityHighDescription,,品質と処理量の基準設定です,Provides the reference balance of quality and processing cost.,质量与处理量的基准设置。,品質與處理量的基準設定。,품질과 처리량의 기준 설정입니다.,Equilibra calidad y coste de proceso.,يوفر توازنا بين الجودة وكلفة المعالجة.,Menyeimbangkan kualitas dan beban pemrosesan.
+QualityUltra,,最高品質,Ultra,最高质量,最高品質,최고 품질,Ultra,فائقة,Ultra
+QualityUltraDescription,,最多の標本数と反復回数を使用します,Uses the largest sample and iteration counts.,使用最多的采样数和迭代次数。,使用最多的取樣數和迭代次數。,가장 많은 표본 수와 반복 횟수를 사용합니다.,Usa el mayor número de muestras e iteraciones.,يستخدم أكبر عدد من العينات والتكرارات.,Menggunakan jumlah sampel dan iterasi terbesar.
+TagMaterial,,材質,material,材质,材質,재질,material,مادة,material
+TagTopology,,位相,topology,拓扑,拓撲,위상,topología,طوبولوجيا,topologi
+TagStylize,,画像調,stylize,风格化,風格化,스타일화,estilizar,أسلوب,stilasi
+UpdateAvailableMessage,,新しいバージョン {0} が公開されています。,A new version {0} is available.,新版本 {0} 已发布。,新版本 {0} 已發佈。,새 버전 {0}이 공개되었습니다.,La nueva versión {0} está disponible.,الإصدار الجديد {0} متاح الآن.,Versi baru {0} telah tersedia.
