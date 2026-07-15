@@ -124,6 +124,7 @@ jobs:
           $pkgName = "TopologicalMaterialField_$version.ymme"
 
           New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
+          New-Item -ItemType Directory -Path "$stageRoot/LICENSE" -Force | Out-Null
 
           Copy-Item "$outDir/TopologicalMaterialField.dll" "$stageRoot/"
           Copy-Item "$outDir/TopologicalMaterialField.ComputeSharp.dll" "$stageRoot/"
@@ -137,11 +138,8 @@ jobs:
             }
           }
 
+          Copy-Item ".github/LICENSE/*.txt" "$stageRoot/LICENSE/"
           Copy-Item ".github/Plugin_Readme.txt" "$stageRoot/Readme.txt"
-          Copy-Item "LICENSE.txt" "$stageRoot/LICENSE.txt"
-          Copy-Item "ComputeSharp/LICENSE" "$stageRoot/ComputeSharp.LICENSE.txt"
-          Copy-Item "ComputeSharp/ThirdPartyNotices.txt" "$stageRoot/ComputeSharp.ThirdPartyNotices.txt"
-          Copy-Item "YMM4-GitHubUpdateNotifier/LICENSE.txt" "$stageRoot/GitHubUpdateNotifier.LICENSE.txt"
 
           Compress-Archive -Path "stage/*" -DestinationPath $pkgName -CompressionLevel Optimal
           echo "PKG_NAME=$pkgName" >> $env:GITHUB_OUTPUT
