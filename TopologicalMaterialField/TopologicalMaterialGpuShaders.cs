@@ -4,6 +4,62 @@ namespace TopologicalMaterialField;
 
 [ThreadGroupSize(DefaultThreadGroupSizes.XY)]
 [GeneratedComputeShaderDescriptor]
+internal readonly partial struct SharedTextureToPackedBufferShader(
+    ReadWriteTexture2D<Bgra32, Float4> source,
+    ReadWriteBuffer<int> output,
+    int width,
+    int height) : IComputeShader
+{
+    private readonly ReadWriteTexture2D<Bgra32, Float4> source = source;
+    private readonly ReadWriteBuffer<int> output = output;
+    private readonly int width = width;
+    private readonly int height = height;
+
+    public void Execute()
+    {
+        var x = ThreadIds.X;
+        var y = ThreadIds.Y;
+        if (x >= width || y >= height)
+            return;
+        var pixel = source[ThreadIds.XY];
+        var red = (int)Hlsl.Round(Hlsl.Saturate(pixel.X) * 255f);
+        var green = (int)Hlsl.Round(Hlsl.Saturate(pixel.Y) * 255f);
+        var blue = (int)Hlsl.Round(Hlsl.Saturate(pixel.Z) * 255f);
+        var alpha = (int)Hlsl.Round(Hlsl.Saturate(pixel.W) * 255f);
+        output[y * width + x] = (alpha << 24) | (red << 16) | (green << 8) | blue;
+    }
+}
+
+[ThreadGroupSize(DefaultThreadGroupSizes.XY)]
+[GeneratedComputeShaderDescriptor]
+internal readonly partial struct PackedBufferToSharedTextureShader(
+    ReadWriteBuffer<int> source,
+    ReadWriteTexture2D<Bgra32, Float4> output,
+    int width,
+    int height) : IComputeShader
+{
+    private readonly ReadWriteBuffer<int> source = source;
+    private readonly ReadWriteTexture2D<Bgra32, Float4> output = output;
+    private readonly int width = width;
+    private readonly int height = height;
+
+    public void Execute()
+    {
+        var x = ThreadIds.X;
+        var y = ThreadIds.Y;
+        if (x >= width || y >= height)
+            return;
+        var packed = source[y * width + x];
+        output[ThreadIds.XY] = new Float4(
+            ((packed >> 16) & 255) / 255f,
+            ((packed >> 8) & 255) / 255f,
+            (packed & 255) / 255f,
+            ((packed >> 24) & 255) / 255f);
+    }
+}
+
+[ThreadGroupSize(DefaultThreadGroupSizes.XY)]
+[GeneratedComputeShaderDescriptor]
 internal readonly partial struct MaterialPreprocessShader(
     ReadWriteBuffer<int> source,
     ReadWriteBuffer<Float4> features,
@@ -62,8 +118,66 @@ internal readonly partial struct MaterialPreprocessShader(
 
 [ThreadGroupSize(DefaultThreadGroupSizes.XY)]
 [GeneratedComputeShaderDescriptor]
+internal readonly partial struct SharedTextureMaterialPreprocessShader(
+    ReadWriteTexture2D<Bgra32, Float4> source,
+    ReadWriteBuffer<Float4> features,
+    ReadWriteBuffer<float> scalar,
+    int width,
+    int height) : IComputeShader
+{
+    private readonly ReadWriteTexture2D<Bgra32, Float4> source = source;
+    private readonly ReadWriteBuffer<Float4> features = features;
+    private readonly ReadWriteBuffer<float> scalar = scalar;
+    private readonly int width = width;
+    private readonly int height = height;
+
+    public void Execute()
+    {
+        var x = ThreadIds.X;
+        var y = ThreadIds.Y;
+        if (x >= width || y >= height)
+            return;
+
+        var index = y * width + x;
+        var pixel = source[ThreadIds.XY];
+        var alpha = (int)Hlsl.Round(Hlsl.Saturate(pixel.W) * 255f);
+        if (alpha == 0)
+        {
+            features[index] = new Float4(0f, 0f, 0f, 0f);
+            scalar[index] = 0f;
+            return;
+        }
+
+        var inverseAlpha = 1f / alpha;
+        var blue = Hlsl.Saturate(Hlsl.Round(Hlsl.Saturate(pixel.Z) * 255f) * inverseAlpha);
+        var green = Hlsl.Saturate(Hlsl.Round(Hlsl.Saturate(pixel.Y) * 255f) * inverseAlpha);
+        var red = Hlsl.Saturate(Hlsl.Round(Hlsl.Saturate(pixel.X) * 255f) * inverseAlpha);
+        red = ToLinear(red);
+        green = ToLinear(green);
+        blue = ToLinear(blue);
+
+        var l = 0.4122214708f * red + 0.5363325363f * green + 0.0514459929f * blue;
+        var m = 0.2119034982f * red + 0.6806995451f * green + 0.1073969566f * blue;
+        var s = 0.0883024619f * red + 0.2817188376f * green + 0.6299787005f * blue;
+        var lRoot = Hlsl.Pow(Hlsl.Max(l, 0f), 1f / 3f);
+        var mRoot = Hlsl.Pow(Hlsl.Max(m, 0f), 1f / 3f);
+        var sRoot = Hlsl.Pow(Hlsl.Max(s, 0f), 1f / 3f);
+        var labL = 0.2104542553f * lRoot + 0.7936177850f * mRoot - 0.0040720468f * sRoot;
+        var labA = 1.9779984951f * lRoot - 2.4285922050f * mRoot + 0.4505937099f * sRoot;
+        var labB = 0.0259040371f * lRoot + 0.7827717662f * mRoot - 0.8086757660f * sRoot;
+
+        features[index] = new Float4(labL, labA, labB, alpha / 255f);
+        scalar[index] = labL;
+    }
+
+    private float ToLinear(float value)
+        => value <= 0.04045f ? value / 12.92f : Hlsl.Pow((value + 0.055f) / 1.055f, 2.4f);
+}
+
+[ThreadGroupSize(DefaultThreadGroupSizes.XY)]
+[GeneratedComputeShaderDescriptor]
 internal readonly partial struct ScalarSmoothShader(
-    ReadWriteBuffer<int> source,
+    ReadWriteBuffer<Float4> features,
     ReadWriteBuffer<float> input,
     ReadWriteBuffer<float> output,
     float spatialWeight1,
@@ -74,7 +188,7 @@ internal readonly partial struct ScalarSmoothShader(
     int width,
     int height) : IComputeShader
 {
-    private readonly ReadWriteBuffer<int> source = source;
+    private readonly ReadWriteBuffer<Float4> features = features;
     private readonly ReadWriteBuffer<float> input = input;
     private readonly ReadWriteBuffer<float> output = output;
     private readonly float spatialWeight1 = spatialWeight1;
@@ -93,7 +207,7 @@ internal readonly partial struct ScalarSmoothShader(
             return;
 
         var index = y * width + x;
-        if (((source[index] >> 24) & 255) == 0)
+        if (features[index].W <= 0f)
         {
             output[index] = 0f;
             return;
@@ -113,7 +227,7 @@ internal readonly partial struct ScalarSmoothShader(
                 if (sx < 0 || sx >= width)
                     continue;
                 var sampleIndex = sy * width + sx;
-                if (((source[sampleIndex] >> 24) & 255) == 0)
+                if (features[sampleIndex].W <= 0f)
                     continue;
                 var value = input[sampleIndex];
                 var spatial = SpatialWeight(dx * dx + dy * dy);
@@ -139,18 +253,16 @@ internal readonly partial struct ScalarSmoothShader(
 [ThreadGroupSize(DefaultThreadGroupSizes.XY)]
 [GeneratedComputeShaderDescriptor]
 internal readonly partial struct FlowInitializeShader(
-    ReadWriteBuffer<int> source,
+    ReadWriteBuffer<Float4> features,
     ReadWriteBuffer<float> scalar,
-    ReadWriteBuffer<int> ascent,
-    ReadWriteBuffer<int> descent,
+    ReadWriteBuffer<Int2> flow,
     float threshold,
     int width,
     int height) : IComputeShader
 {
-    private readonly ReadWriteBuffer<int> source = source;
+    private readonly ReadWriteBuffer<Float4> features = features;
     private readonly ReadWriteBuffer<float> scalar = scalar;
-    private readonly ReadWriteBuffer<int> ascent = ascent;
-    private readonly ReadWriteBuffer<int> descent = descent;
+    private readonly ReadWriteBuffer<Int2> flow = flow;
     private readonly float threshold = threshold;
     private readonly int width = width;
     private readonly int height = height;
@@ -163,10 +275,9 @@ internal readonly partial struct FlowInitializeShader(
             return;
 
         var index = y * width + x;
-        if (((source[index] >> 24) & 255) == 0)
+        if (features[index].W <= 0f)
         {
-            ascent[index] = index;
-            descent[index] = index;
+            flow[index] = new Int2(index, index);
             return;
         }
 
@@ -187,7 +298,7 @@ internal readonly partial struct FlowInitializeShader(
                 if (sx < 0 || sx >= width || (dx == 0 && dy == 0))
                     continue;
                 var sampleIndex = sy * width + sx;
-                if (((source[sampleIndex] >> 24) & 255) == 0)
+                if (features[sampleIndex].W <= 0f)
                     continue;
                 var value = scalar[sampleIndex];
                 if (value > bestHigh || (value == bestHigh && sampleIndex > highIndex))
@@ -203,26 +314,21 @@ internal readonly partial struct FlowInitializeShader(
             }
         }
 
-        ascent[index] = highIndex;
-        descent[index] = lowIndex;
+        flow[index] = new Int2(highIndex, lowIndex);
     }
 }
 
 [ThreadGroupSize(DefaultThreadGroupSizes.XY)]
 [GeneratedComputeShaderDescriptor]
 internal readonly partial struct FlowCompressShader(
-    ReadWriteBuffer<int> ascentInput,
-    ReadWriteBuffer<int> descentInput,
-    ReadWriteBuffer<int> ascentOutput,
-    ReadWriteBuffer<int> descentOutput,
+    ReadWriteBuffer<Int2> input,
+    ReadWriteBuffer<Int2> output,
     int pixelCount,
     int width,
     int height) : IComputeShader
 {
-    private readonly ReadWriteBuffer<int> ascentInput = ascentInput;
-    private readonly ReadWriteBuffer<int> descentInput = descentInput;
-    private readonly ReadWriteBuffer<int> ascentOutput = ascentOutput;
-    private readonly ReadWriteBuffer<int> descentOutput = descentOutput;
+    private readonly ReadWriteBuffer<Int2> input = input;
+    private readonly ReadWriteBuffer<Int2> output = output;
     private readonly int pixelCount = pixelCount;
     private readonly int width = width;
     private readonly int height = height;
@@ -234,33 +340,29 @@ internal readonly partial struct FlowCompressShader(
         if (x >= width || y >= height)
             return;
         var index = y * width + x;
-        var high = ascentInput[index];
-        var low = descentInput[index];
+        var current = input[index];
+        var high = current.X;
+        var low = current.Y;
         high = high >= 0 && high < pixelCount ? high : index;
         low = low >= 0 && low < pixelCount ? low : index;
-        ascentOutput[index] = ascentInput[high];
-        descentOutput[index] = descentInput[low];
+        output[index] = new Int2(input[high].X, input[low].Y);
     }
 }
 
 [ThreadGroupSize(DefaultThreadGroupSizes.XY)]
 [GeneratedComputeShaderDescriptor]
 internal readonly partial struct TopologyResolveShader(
-    ReadWriteBuffer<int> source,
+    ReadWriteBuffer<Float4> features,
     ReadWriteBuffer<float> scalar,
-    ReadWriteBuffer<int> ascent,
-    ReadWriteBuffer<int> descent,
+    ReadWriteBuffer<Int2> flow,
     ReadWriteBuffer<Float4> topology,
-    ReadWriteBuffer<int> connectivity,
     int width,
     int height) : IComputeShader
 {
-    private readonly ReadWriteBuffer<int> source = source;
+    private readonly ReadWriteBuffer<Float4> features = features;
     private readonly ReadWriteBuffer<float> scalar = scalar;
-    private readonly ReadWriteBuffer<int> ascent = ascent;
-    private readonly ReadWriteBuffer<int> descent = descent;
+    private readonly ReadWriteBuffer<Int2> flow = flow;
     private readonly ReadWriteBuffer<Float4> topology = topology;
-    private readonly ReadWriteBuffer<int> connectivity = connectivity;
     private readonly int width = width;
     private readonly int height = height;
 
@@ -271,15 +373,15 @@ internal readonly partial struct TopologyResolveShader(
         if (x >= width || y >= height)
             return;
         var index = y * width + x;
-        if (((source[index] >> 24) & 255) == 0)
+        if (features[index].W <= 0f)
         {
-            topology[index] = new Float4(0f, 0f, 0f, 0f);
-            connectivity[index] = -1;
+            topology[index] = new Float4(0f, 0f, 0f, -1f);
             return;
         }
 
-        var high = ascent[index];
-        var low = descent[index];
+        var currentFlow = flow[index];
+        var high = currentFlow.X;
+        var low = currentFlow.Y;
         var center = scalar[index];
         var boundary = 0f;
         var neighborSum = 0f;
@@ -296,9 +398,10 @@ internal readonly partial struct TopologyResolveShader(
                 if (sx < 0 || sx >= width || (dx == 0 && dy == 0))
                     continue;
                 var sampleIndex = sy * width + sx;
-                if (((source[sampleIndex] >> 24) & 255) == 0)
+                if (features[sampleIndex].W <= 0f)
                     continue;
-                if (ascent[sampleIndex] != high || descent[sampleIndex] != low)
+                var neighborFlow = flow[sampleIndex];
+                if (neighborFlow.X != high || neighborFlow.Y != low)
                     boundary += 1f;
                 else if (dy == 0 && dx == -1)
                     connectionMask |= 1;
@@ -316,19 +419,7 @@ internal readonly partial struct TopologyResolveShader(
         var average = neighborSum / Hlsl.Max(count, 1f);
         var ridge = Hlsl.Max(center - average, 0f);
         var valley = Hlsl.Max(average - center, 0f);
-        topology[index] = new Float4(boundary / Hlsl.Max(count, 1f), ridge, valley, Hash01(high, low));
-        connectivity[index] = connectionMask;
-    }
-
-    private float Hash01(int a, int b)
-    {
-        var value = (uint)a * 0x9e3779b9u ^ (uint)b * 0x85ebca6bu;
-        value ^= value >> 16;
-        value *= 0x7feb352du;
-        value ^= value >> 15;
-        value *= 0x846ca68bu;
-        value ^= value >> 16;
-        return value * 2.3283064e-10f;
+        topology[index] = new Float4(boundary / Hlsl.Max(count, 1f), ridge, valley, connectionMask);
     }
 }
 
@@ -337,8 +428,7 @@ internal readonly partial struct TopologyResolveShader(
 internal readonly partial struct SlicedTransportShader(
     ReadWriteBuffer<Float4> features,
     ReadWriteBuffer<Float4> topology,
-    ReadWriteBuffer<int> ascent,
-    ReadWriteBuffer<int> descent,
+    ReadWriteBuffer<Int2> flow,
     ReadWriteBuffer<Float4> output,
     int material,
     float strength,
@@ -351,8 +441,7 @@ internal readonly partial struct SlicedTransportShader(
 {
     private readonly ReadWriteBuffer<Float4> features = features;
     private readonly ReadWriteBuffer<Float4> topology = topology;
-    private readonly ReadWriteBuffer<int> ascent = ascent;
-    private readonly ReadWriteBuffer<int> descent = descent;
+    private readonly ReadWriteBuffer<Int2> flow = flow;
     private readonly ReadWriteBuffer<Float4> output = output;
     private readonly int material = material;
     private readonly float strength = strength;
@@ -379,8 +468,9 @@ internal readonly partial struct SlicedTransportShader(
         }
 
         var center = new Float4(centerSource.X, centerSource.Y, centerSource.Z, topology[index].Y - topology[index].Z);
-        var high = ascent[index];
-        var low = descent[index];
+        var currentFlow = flow[index];
+        var high = currentFlow.X;
+        var low = currentFlow.Y;
         var mean = center;
         var valid = 1f;
         var direction0 = Direction(0);
@@ -411,7 +501,8 @@ internal readonly partial struct SlicedTransportShader(
         for (var sample = 0; sample < sampleCount; sample++)
         {
             var candidate = CandidateIndex(x, y, high, low, sample);
-            if (ascent[candidate] != high || descent[candidate] != low || features[candidate].W <= 0f)
+            var candidateFlow = flow[candidate];
+            if (candidateFlow.X != high || candidateFlow.Y != low || features[candidate].W <= 0f)
                 continue;
             var feature = features[candidate];
             var structure = topology[candidate].Y - topology[candidate].Z;
@@ -550,8 +641,7 @@ internal readonly partial struct SlicedTransportShader(
 [GeneratedComputeShaderDescriptor]
 internal readonly partial struct ReactionInitializeShader(
     ReadWriteBuffer<Float4> topology,
-    ReadWriteBuffer<int> ascent,
-    ReadWriteBuffer<int> descent,
+    ReadWriteBuffer<Int2> flow,
     ReadWriteBuffer<Float2> output,
     int material,
     float patternScale,
@@ -560,8 +650,7 @@ internal readonly partial struct ReactionInitializeShader(
     int height) : IComputeShader
 {
     private readonly ReadWriteBuffer<Float4> topology = topology;
-    private readonly ReadWriteBuffer<int> ascent = ascent;
-    private readonly ReadWriteBuffer<int> descent = descent;
+    private readonly ReadWriteBuffer<Int2> flow = flow;
     private readonly ReadWriteBuffer<Float2> output = output;
     private readonly int material = material;
     private readonly float patternScale = patternScale;
@@ -580,11 +669,12 @@ internal readonly partial struct ReactionInitializeShader(
         var cell = Hlsl.Max((int)patternScale, 1);
         var cellX = x / cell;
         var cellY = y / cell;
-        var hash = Hash((uint)cellX * 0x9e3779b9u ^ (uint)cellY * 0x85ebca6bu ^ (uint)ascent[index] ^ (uint)descent[index] ^ (uint)seed);
+        var currentFlow = flow[index];
+        var hash = Hash((uint)cellX * 0x9e3779b9u ^ (uint)cellY * 0x85ebca6bu ^ (uint)currentFlow.X ^ (uint)currentFlow.Y ^ (uint)seed);
         var random = hash * 2.3283064e-10f;
         var probability = material == 5 ? 0.38f : material == 4 ? 0.24f : 0.18f;
         var seeded = random < probability || topologyValue.X > 0.45f;
-        var v = seeded ? 0.22f + 0.16f * topologyValue.W : 0f;
+        var v = seeded ? 0.22f + 0.16f * Hash01(currentFlow.X, currentFlow.Y) : 0f;
         output[index] = new Float2(1f - v * 0.5f, v);
     }
 
@@ -597,6 +687,9 @@ internal readonly partial struct ReactionInitializeShader(
         value ^= value >> 16;
         return value;
     }
+
+    private float Hash01(int a, int b)
+        => Hash((uint)a * 0x9e3779b9u ^ (uint)b * 0x85ebca6bu) * 2.3283064e-10f;
 }
 
 [ThreadGroupSize(DefaultThreadGroupSizes.XY)]
@@ -604,8 +697,7 @@ internal readonly partial struct ReactionInitializeShader(
 internal readonly partial struct ReactionDiffusionShader(
     ReadWriteBuffer<Float2> input,
     ReadWriteBuffer<Float2> output,
-    ReadWriteBuffer<int> ascent,
-    ReadWriteBuffer<int> descent,
+    ReadWriteBuffer<Int2> flow,
     int material,
     float patternScale,
     int width,
@@ -613,8 +705,7 @@ internal readonly partial struct ReactionDiffusionShader(
 {
     private readonly ReadWriteBuffer<Float2> input = input;
     private readonly ReadWriteBuffer<Float2> output = output;
-    private readonly ReadWriteBuffer<int> ascent = ascent;
-    private readonly ReadWriteBuffer<int> descent = descent;
+    private readonly ReadWriteBuffer<Int2> flow = flow;
     private readonly int material = material;
     private readonly float patternScale = patternScale;
     private readonly int width = width;
@@ -655,7 +746,9 @@ internal readonly partial struct ReactionDiffusionShader(
         x = x < 0 ? 0 : x >= width ? width - 1 : x;
         y = y < 0 ? 0 : y >= height ? height - 1 : y;
         var index = y * width + x;
-        if (ascent[index] != ascent[centerIndex] || descent[index] != descent[centerIndex])
+        var currentFlow = flow[centerIndex];
+        var sampleFlow = flow[index];
+        if (sampleFlow.X != currentFlow.X || sampleFlow.Y != currentFlow.Y)
             return fallback;
         return input[index];
     }
@@ -668,7 +761,6 @@ internal readonly partial struct PoissonRhsShader(
     ReadWriteBuffer<Float4> transported,
     ReadWriteBuffer<Float4> topology,
     ReadWriteBuffer<Float2> reaction,
-    ReadWriteBuffer<int> connectivity,
     ReadWriteBuffer<float> rhs,
     ReadWriteBuffer<float> initial,
     float patternStrength,
@@ -680,7 +772,6 @@ internal readonly partial struct PoissonRhsShader(
     private readonly ReadWriteBuffer<Float4> transported = transported;
     private readonly ReadWriteBuffer<Float4> topology = topology;
     private readonly ReadWriteBuffer<Float2> reaction = reaction;
-    private readonly ReadWriteBuffer<int> connectivity = connectivity;
     private readonly ReadWriteBuffer<float> rhs = rhs;
     private readonly ReadWriteBuffer<float> initial = initial;
     private readonly float patternStrength = patternStrength;
@@ -695,7 +786,7 @@ internal readonly partial struct PoissonRhsShader(
         if (x >= width || y >= height)
             return;
         var index = y * width + x;
-        var connectivityValue = connectivity[index];
+        var connectivityValue = (int)topology[index].W;
         if (connectivityValue < 0)
         {
             rhs[index] = 0f;
@@ -733,7 +824,7 @@ internal readonly partial struct PoissonRhsShader(
 internal readonly partial struct PoissonJacobiShader(
     ReadWriteBuffer<float> input,
     ReadWriteBuffer<float> rhs,
-    ReadWriteBuffer<int> connectivity,
+    ReadWriteBuffer<Float4> topology,
     ReadWriteBuffer<float> output,
     float reconstruction,
     int width,
@@ -741,7 +832,7 @@ internal readonly partial struct PoissonJacobiShader(
 {
     private readonly ReadWriteBuffer<float> input = input;
     private readonly ReadWriteBuffer<float> rhs = rhs;
-    private readonly ReadWriteBuffer<int> connectivity = connectivity;
+    private readonly ReadWriteBuffer<Float4> topology = topology;
     private readonly ReadWriteBuffer<float> output = output;
     private readonly float reconstruction = reconstruction;
     private readonly int width = width;
@@ -754,7 +845,7 @@ internal readonly partial struct PoissonJacobiShader(
         if (x >= width || y >= height)
             return;
         var index = y * width + x;
-        var connectivityValue = connectivity[index];
+        var connectivityValue = (int)topology[index].W;
         if (connectivityValue < 0)
         {
             output[index] = 0f;
@@ -781,12 +872,10 @@ internal readonly partial struct PoissonJacobiShader(
 [ThreadGroupSize(DefaultThreadGroupSizes.XY)]
 [GeneratedComputeShaderDescriptor]
 internal readonly partial struct MaterialFinalizeShader(
-    ReadWriteBuffer<int> sourceOutput,
     ReadWriteBuffer<Float4> transported,
     ReadWriteBuffer<Float4> topology,
     ReadWriteBuffer<Float2> reaction,
     ReadWriteBuffer<float> poisson,
-    ReadWriteBuffer<int> connectivity,
     int material,
     float patternStrength,
     float relief,
@@ -795,12 +884,10 @@ internal readonly partial struct MaterialFinalizeShader(
     int width,
     int height) : IComputeShader
 {
-    private readonly ReadWriteBuffer<int> sourceOutput = sourceOutput;
     private readonly ReadWriteBuffer<Float4> transported = transported;
     private readonly ReadWriteBuffer<Float4> topology = topology;
     private readonly ReadWriteBuffer<Float2> reaction = reaction;
     private readonly ReadWriteBuffer<float> poisson = poisson;
-    private readonly ReadWriteBuffer<int> connectivity = connectivity;
     private readonly int material = material;
     private readonly float patternStrength = patternStrength;
     private readonly float relief = relief;
@@ -816,15 +903,14 @@ internal readonly partial struct MaterialFinalizeShader(
         if (x >= width || y >= height)
             return;
         var index = y * width + x;
-        var packed = sourceOutput[index];
-        var alphaByte = (packed >> 24) & 255;
+        var lab = transported[index];
+        var alphaByte = (int)Hlsl.Round(Hlsl.Saturate(lab.W) * 255f);
         if (alphaByte == 0)
         {
-            sourceOutput[index] = 0;
+            transported[index] = new Float4(0f, 0f, 0f, 0f);
             return;
         }
 
-        var lab = transported[index];
         var lValue = poisson[index];
         var lRoot = lValue + 0.3963377774f * lab.Y + 0.2158037573f * lab.Z;
         var mRoot = lValue - 0.1055613458f * lab.Y - 0.0638541728f * lab.Z;
@@ -836,7 +922,7 @@ internal readonly partial struct MaterialFinalizeShader(
         var green = -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s;
         var blue = -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s;
 
-        var connectivityValue = connectivity[index];
+        var connectivityValue = (int)topology[index].W;
         var gradientX = SamplePoisson(x + 1, y, lValue, connectivityValue & 2) - SamplePoisson(x - 1, y, lValue, connectivityValue & 1);
         var gradientY = SamplePoisson(x, y + 1, lValue, connectivityValue & 8) - SamplePoisson(x, y - 1, lValue, connectivityValue & 4);
         var nx = -gradientX * relief * 4f;
@@ -873,7 +959,7 @@ internal readonly partial struct MaterialFinalizeShader(
         var redByte = (int)Hlsl.Round(Hlsl.Saturate(red * alpha) * 255f);
         var greenByte = (int)Hlsl.Round(Hlsl.Saturate(green * alpha) * 255f);
         var blueByte = (int)Hlsl.Round(Hlsl.Saturate(blue * alpha) * 255f);
-        sourceOutput[index] = (alphaByte << 24) | (redByte << 16) | (greenByte << 8) | blueByte;
+        transported[index] = new Float4(redByte / 255f, greenByte / 255f, blueByte / 255f, alpha);
     }
 
     private float SamplePoisson(int x, int y, float fallback, int connected)
@@ -887,4 +973,55 @@ internal readonly partial struct MaterialFinalizeShader(
 
     private float ToSrgb(float value)
         => value <= 0.0031308f ? value * 12.92f : 1.055f * Hlsl.Pow(value, 1f / 2.4f) - 0.055f;
+}
+
+[ThreadGroupSize(DefaultThreadGroupSizes.XY)]
+[GeneratedComputeShaderDescriptor]
+internal readonly partial struct MaterialBufferToPackedShader(
+    ReadWriteBuffer<Float4> source,
+    ReadWriteBuffer<int> output,
+    int width,
+    int height) : IComputeShader
+{
+    private readonly ReadWriteBuffer<Float4> source = source;
+    private readonly ReadWriteBuffer<int> output = output;
+    private readonly int width = width;
+    private readonly int height = height;
+
+    public void Execute()
+    {
+        var x = ThreadIds.X;
+        var y = ThreadIds.Y;
+        if (x >= width || y >= height)
+            return;
+        var pixel = source[y * width + x];
+        var red = (int)Hlsl.Round(Hlsl.Saturate(pixel.X) * 255f);
+        var green = (int)Hlsl.Round(Hlsl.Saturate(pixel.Y) * 255f);
+        var blue = (int)Hlsl.Round(Hlsl.Saturate(pixel.Z) * 255f);
+        var alpha = (int)Hlsl.Round(Hlsl.Saturate(pixel.W) * 255f);
+        output[y * width + x] = (alpha << 24) | (red << 16) | (green << 8) | blue;
+    }
+}
+
+[ThreadGroupSize(DefaultThreadGroupSizes.XY)]
+[GeneratedComputeShaderDescriptor]
+internal readonly partial struct MaterialBufferToSharedTextureShader(
+    ReadWriteBuffer<Float4> source,
+    ReadWriteTexture2D<Bgra32, Float4> output,
+    int width,
+    int height) : IComputeShader
+{
+    private readonly ReadWriteBuffer<Float4> source = source;
+    private readonly ReadWriteTexture2D<Bgra32, Float4> output = output;
+    private readonly int width = width;
+    private readonly int height = height;
+
+    public void Execute()
+    {
+        var x = ThreadIds.X;
+        var y = ThreadIds.Y;
+        if (x >= width || y >= height)
+            return;
+        output[ThreadIds.XY] = source[y * width + x];
+    }
 }
