@@ -1,4 +1,11 @@
 <Solution>
-  <Project Path="TopologicalMaterialField/TopologicalMaterialField.csproj" />
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="TopologicalMaterialField.Tests/TopologicalMaterialField.Tests.csproj" />
+  <Project Path="TopologicalMaterialField/TopologicalMaterialField.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
   <Project Path="YukkuriMovieMaker.Generator/YukkuriMovieMaker.Generator/YukkuriMovieMaker.Generator.csproj" />
 </Solution>
