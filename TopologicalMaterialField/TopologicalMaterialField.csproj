@@ -84,7 +84,6 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.142" />
-		<PackageReference Include="ComputeSharp" Version="3.2.0" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -94,16 +93,20 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\YukkuriMovieMaker.Generator\YukkuriMovieMaker.Generator\YukkuriMovieMaker.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\ComputeSharp\src\ComputeSharp.Core.SourceGenerators\ComputeSharp.Core.SourceGenerators.csproj" SetConfiguration="Configuration=$(Configuration)" SetPlatform="Platform=AnyCPU" GlobalPropertiesToRemove="SkipPluginDeploy" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\ComputeSharp\src\ComputeSharp.SourceGenerators\ComputeSharp.SourceGenerators.csproj" SetConfiguration="Configuration=$(Configuration)" SetPlatform="Platform=AnyCPU" GlobalPropertiesToRemove="SkipPluginDeploy" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\YukkuriMovieMaker.Generator\YukkuriMovieMaker.Generator\YukkuriMovieMaker.Generator.csproj" SetConfiguration="Configuration=$(Configuration)" SetPlatform="Platform=AnyCPU" GlobalPropertiesToRemove="SkipPluginDeploy" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<AdditionalFiles Include="**/*.csv" />
 	</ItemGroup>
+
+	<Import Project="ComputeSharp.Reference.props" />
 
 	<ItemGroup>
 		<Folder Include="Shaders\" />
 	</ItemGroup>
 
 	<Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(SkipPluginDeploy)' != 'true'">
-		<Exec Command="mkdir &quot;$(YMM4DirPath)user\plugin\$(ProjectName)&quot; &gt; NUL 2&gt;&amp;1&#xD;&#xA;copy &quot;$(TargetPath)&quot; &quot;$(YMM4DirPath)user\plugin\$(ProjectName)\&quot;" />
+		<Exec Command="mkdir &quot;$(YMM4DirPath)user\plugin\$(ProjectName)&quot; &gt; NUL 2&gt;&amp;1&#xD;&#xA;copy &quot;$(TargetPath)&quot; &quot;$(YMM4DirPath)user\plugin\$(ProjectName)\&quot;&#xD;&#xA;copy &quot;$(TargetDir)TopologicalMaterialField.ComputeSharp.dll&quot; &quot;$(YMM4DirPath)user\plugin\$(ProjectName)\&quot;&#xD;&#xA;copy &quot;$(TargetDir)TopologicalMaterialField.ComputeSharp.Core.dll&quot; &quot;$(YMM4DirPath)user\plugin\$(ProjectName)\&quot;" />
 	</Target>
 
 </Project>
