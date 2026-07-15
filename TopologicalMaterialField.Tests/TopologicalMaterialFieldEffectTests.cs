@@ -1,4 +1,13 @@
+using System.Runtime.InteropServices;
 using ComputeSharp;
+using ComputeSharp.Interop;
+using Vortice;
+using Vortice.Direct2D1;
+using Vortice.Direct2D1.Effects;
+using Vortice.DXGI;
+using Vortice.Mathematics;
+using YukkuriMovieMaker.Commons;
+using PixelFormat = Vortice.DCommon.PixelFormat;
 
 namespace TopologicalMaterialField.Tests;
 
@@ -91,18 +100,7 @@ public sealed class TopologicalMaterialFieldEffectTests
 
         const int width = 8;
         const int height = 8;
-        var source = new int[width * height];
-        for (var y = 0; y < height; y++)
-        {
-            for (var x = 0; x < width; x++)
-            {
-                var alpha = x == 0 && y == 0 ? 0 : 96 + (x + y) * 10;
-                var red = (x * 35 * alpha + 127) / 255;
-                var green = (y * 35 * alpha + 127) / 255;
-                var blue = ((x + y) * 17 * alpha + 127) / 255;
-                source[y * width + x] = alpha << 24 | red << 16 | green << 8 | blue;
-            }
-        }
+        var source = CreateSourcePixels(width, height);
 
         var first = new int[source.Length];
         var second = new int[source.Length];
@@ -184,23 +182,276 @@ public sealed class TopologicalMaterialFieldEffectTests
     }
 
     [Fact]
-    public void TopologyResolvePreservesRegionPhase()
+    public void SharedTexturePackingRoundTripPreservesEveryByteValue()
     {
         var device = TryGetGraphicsDevice();
         if (device is null)
             return;
 
-        using var source = device.AllocateReadWriteBuffer(new[] { unchecked((int)0xFFFFFFFF) });
-        using var scalar = device.AllocateReadWriteBuffer(new[] { 0.5f });
-        using var ascent = device.AllocateReadWriteBuffer(new[] { 17 });
-        using var descent = device.AllocateReadWriteBuffer(new[] { 23 });
-        using var topology = device.AllocateReadWriteBuffer<Float4>(1);
-        using var connectivity = device.AllocateReadWriteBuffer<int>(1);
-        device.For(1, 1, new TopologyResolveShader(source, scalar, ascent, descent, topology, connectivity, 1, 1));
-        var result = new Float4[1];
+        const int width = 16;
+        const int height = 16;
+        var source = new Bgra32[width * height];
+        for (var value = 0; value < source.Length; value++)
+            source[value] = new Bgra32((byte)value, (byte)(255 - value), (byte)(value * 73), (byte)(value * 151));
+
+        using var sourceTexture = InteropServices.AllocateSharedReadWriteTexture2D<Bgra32, Float4>(device, width, height);
+        using var outputTexture = InteropServices.AllocateSharedReadWriteTexture2D<Bgra32, Float4>(device, width, height);
+        using var packed = device.AllocateReadWriteBuffer<int>(source.Length);
+        sourceTexture.CopyFrom(source);
+        using (ComputeContext context = device.CreateComputeContext())
+        {
+            context.For(width, height, new SharedTextureToPackedBufferShader(sourceTexture, packed, width, height));
+            context.Barrier(packed);
+            context.For(width, height, new PackedBufferToSharedTextureShader(packed, outputTexture, width, height));
+        }
+        var result = new Bgra32[source.Length];
+        outputTexture.CopyTo(result);
+
+        for (var index = 0; index < source.Length; index++)
+            Assert.Equal(source[index].PackedValue, result[index].PackedValue);
+    }
+
+    [Theory]
+    [InlineData(TopologicalMaterialMode.Ceramic)]
+    [InlineData(TopologicalMaterialMode.Mineral)]
+    [InlineData(TopologicalMaterialMode.OxidizedMetal)]
+    [InlineData(TopologicalMaterialMode.Parchment)]
+    [InlineData(TopologicalMaterialMode.IceCrystal)]
+    [InlineData(TopologicalMaterialMode.Textile)]
+    public void SharedTexturePipelineMatchesPackedBufferPipeline(TopologicalMaterialMode material)
+    {
+        using var pipeline = TopologicalMaterialPipeline.TryCreate();
+        if (pipeline is null)
+        {
+            Assert.Skip("Direct3D 12 is unavailable.");
+            return;
+        }
+
+        const int width = 8;
+        const int height = 8;
+        var source = CreateSourcePixels(width, height);
+        var expected = new int[source.Length];
+        var parameters = CreatePipelineParameters(material);
+        pipeline.Process(source, expected, width, height, in parameters);
+
+        var device = GraphicsDevice.GetDefault();
+        using var sourceTexture = InteropServices.AllocateSharedReadWriteTexture2D<Bgra32, Float4>(device, width, height);
+        using var outputTexture = InteropServices.AllocateSharedReadWriteTexture2D<Bgra32, Float4>(device, width, height);
+        var sourcePixels = new Bgra32[source.Length];
+        for (var index = 0; index < source.Length; index++)
+            sourcePixels[index].PackedValue = unchecked((uint)source[index]);
+        sourceTexture.CopyFrom(sourcePixels);
+        pipeline.ProcessSharedAndWait(sourceTexture, outputTexture, width, height, in parameters);
+        var result = new Bgra32[source.Length];
+        outputTexture.CopyTo(result);
+
+        for (var index = 0; index < expected.Length; index++)
+            Assert.Equal(unchecked((uint)expected[index]), result[index].PackedValue);
+    }
+
+    [Fact]
+    public void SubmittedSharedTexturePipelineDoesNotAllocateManagedMemoryAfterWarmup()
+    {
+        using var pipeline = TopologicalMaterialPipeline.TryCreate();
+        if (pipeline is null)
+        {
+            Assert.Skip("Direct3D 12 is unavailable.");
+            return;
+        }
+
+        const int width = 8;
+        const int height = 8;
+        var device = GraphicsDevice.GetDefault();
+        using var source = InteropServices.AllocateSharedReadWriteTexture2D<Bgra32, Float4>(device, width, height);
+        using var destination = InteropServices.AllocateSharedReadWriteTexture2D<Bgra32, Float4>(device, width, height);
+        var parameters = CreatePipelineParameters(TopologicalMaterialMode.Ceramic);
+        for (var iteration = 0; iteration < 4; iteration++)
+            pipeline.Process(source, destination, width, height, in parameters);
+        var synchronizationBuffer = new Bgra32[width * height];
+        destination.CopyTo(synchronizationBuffer);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        pipeline.Process(source, destination, width, height, in parameters);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        destination.CopyTo(synchronizationBuffer);
+
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void Direct2DInteropPreservesPixelsAndDoesNotAllocateAfterWarmup()
+    {
+        using var devices = new GraphicsDevices();
+        using var graphicsContext = devices.CreateContext();
+        using var interop = TopologicalMaterialGpuInterop.TryCreate(graphicsContext);
+        if (interop is null)
+        {
+            Assert.Skip("Direct3D 11 and Direct3D 12 sharing is unavailable.");
+            return;
+        }
+
+        const int width = 8;
+        const int height = 8;
+        const int expected = unchecked((int)0xC0302010);
+        var pixels = Enumerable.Repeat(expected, width * height).ToArray();
+        var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+        using var inputBitmap = graphicsContext.DeviceContext.CreateBitmap(
+            new SizeI(width, height),
+            new BitmapProperties1(
+                new PixelFormat(Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
+                96f,
+                96f,
+                BitmapOptions.None));
+        try
+        {
+            inputBitmap.CopyFromMemory(handle.AddrOfPinnedObject(), width * sizeof(int));
+        }
+        finally
+        {
+            handle.Free();
+        }
+
+        Assert.True(interop.EnsureResources(width, height));
+        using var packed = interop.Device.AllocateReadWriteBuffer<int>(width * height);
+        var bounds = new RawRectF(0f, 0f, width, height);
+        for (var iteration = 0; iteration < 4; iteration++)
+            ProcessInteropRoundTrip(interop, inputBitmap, packed, bounds, width, height);
+        interop.WaitForIdle();
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        ProcessInteropRoundTrip(interop, inputBitmap, packed, bounds, width, height);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        interop.WaitForIdle();
+
+        using var staging = graphicsContext.DeviceContext.CreateBitmap(
+            new SizeI(width, height),
+            new BitmapProperties1(
+                new PixelFormat(Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
+                96f,
+                96f,
+                BitmapOptions.CpuRead | BitmapOptions.CannotDraw));
+        staging.CopyFromBitmap(interop.OutputBitmap);
+        var mapped = staging.Map(MapOptions.Read);
+        try
+        {
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                    Assert.Equal(expected, Marshal.ReadInt32(mapped.Bits + (nint)(y * mapped.Pitch + x * sizeof(int))));
+            }
+        }
+        finally
+        {
+            staging.Unmap();
+        }
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void MaterialOutputAlignsWithTranslatedInputBounds()
+    {
+        using var devices = new GraphicsDevices();
+        using var graphicsContext = devices.CreateContext();
+        const int width = 4;
+        const int height = 3;
+        const int left = 13;
+        const int top = 17;
+        const int expected = unchecked((int)0xFF302010);
+        var sourcePixels = Enumerable.Repeat(-1, width * height).ToArray();
+        var materialPixels = Enumerable.Repeat(expected, width * height).ToArray();
+        using var sourceBitmap = CreateBitmap(graphicsContext.DeviceContext, sourcePixels, width, height);
+        using var materialBitmap = CreateBitmap(graphicsContext.DeviceContext, materialPixels, width, height);
+        using var sourceTransform = new AffineTransform2D(graphicsContext.DeviceContext)
+        {
+            TransformMatrix = System.Numerics.Matrix3x2.CreateTranslation(left, top),
+            BorderMode = BorderMode.Hard,
+        };
+        using var materialTransform = new AffineTransform2D(graphicsContext.DeviceContext)
+        {
+            TransformMatrix = System.Numerics.Matrix3x2.CreateTranslation(left, top),
+            BorderMode = BorderMode.Hard,
+        };
+        sourceTransform.SetInput(0, sourceBitmap, true);
+        materialTransform.SetInput(0, materialBitmap, true);
+        using var sourceOutput = sourceTransform.Output;
+        using var materialOutput = materialTransform.Output;
+        _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
+        using var effect = new TopologicalMaterialFieldCustomEffect(graphicsContext);
+        if (!effect.IsEnabled)
+        {
+            Assert.Skip("Direct2D custom effects are unavailable.");
+            return;
+        }
+        effect.Amount = 1f;
+        effect.SetInput(0, sourceOutput, true);
+        effect.SetInput(1, materialOutput, true);
+        using var output = effect.Output;
+        using var target = graphicsContext.DeviceContext.CreateBitmap(
+            new SizeI(width, height),
+            new BitmapProperties1(
+                new PixelFormat(Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
+                96f,
+                96f,
+                BitmapOptions.Target));
+        graphicsContext.DeviceContext.Target = target;
+        graphicsContext.DeviceContext.BeginDraw();
+        graphicsContext.DeviceContext.Clear(null);
+        graphicsContext.DeviceContext.DrawImage(
+            output,
+            new System.Numerics.Vector2(-left, -top),
+            null,
+            InterpolationMode.NearestNeighbor,
+            CompositeMode.SourceCopy);
+        graphicsContext.DeviceContext.EndDraw();
+        graphicsContext.DeviceContext.Target = null;
+
+        using var staging = graphicsContext.DeviceContext.CreateBitmap(
+            new SizeI(width, height),
+            new BitmapProperties1(
+                new PixelFormat(Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
+                96f,
+                96f,
+                BitmapOptions.CpuRead | BitmapOptions.CannotDraw));
+        staging.CopyFromBitmap(target);
+        var mapped = staging.Map(MapOptions.Read);
+        try
+        {
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                    Assert.Equal(expected, Marshal.ReadInt32(mapped.Bits + (nint)(y * mapped.Pitch + x * sizeof(int))));
+            }
+        }
+        finally
+        {
+            staging.Unmap();
+        }
+    }
+
+    [Fact]
+    public void TopologyResolveStoresConnectivityMask()
+    {
+        var device = TryGetGraphicsDevice();
+        if (device is null)
+            return;
+
+        using var features = device.AllocateReadWriteBuffer(new[] { new Float4(0f, 0f, 0f, 1f), new Float4(0f, 0f, 0f, 1f), new Float4(0f, 0f, 0f, 1f) });
+        using var scalar = device.AllocateReadWriteBuffer(new[] { 0.5f, 0.5f, 0.5f });
+        using var flow = device.AllocateReadWriteBuffer(new[] { new ComputeSharp.Int2(17, 23), new ComputeSharp.Int2(17, 23), new ComputeSharp.Int2(17, 23) });
+        using var topology = device.AllocateReadWriteBuffer<Float4>(3);
+        device.For(3, 1, new TopologyResolveShader(features, scalar, flow, topology, 3, 1));
+        var result = new Float4[3];
         topology.CopyTo(result);
 
-        Assert.Equal(RegionPhase(17, 23), result[0].W);
+        Assert.Equal(2f, result[0].W);
+        Assert.Equal(3f, result[1].W);
+        Assert.Equal(1f, result[2].W);
     }
 
     [Fact]
@@ -210,16 +461,16 @@ public sealed class TopologicalMaterialFieldEffectTests
         if (device is null)
             return;
 
-        using var topology = device.AllocateReadWriteBuffer(new[] { new Float4(1f, 0f, 0f, 0.75f) });
-        using var ascent = device.AllocateReadWriteBuffer(new[] { 0 });
-        using var descent = device.AllocateReadWriteBuffer(new[] { 0 });
+        using var topology = device.AllocateReadWriteBuffer(new[] { new Float4(1f, 0f, 0f, 0f) });
+        using var flow = device.AllocateReadWriteBuffer(new[] { new ComputeSharp.Int2(17, 23) });
         using var output = device.AllocateReadWriteBuffer<Float2>(1);
-        device.For(1, 1, new ReactionInitializeShader(topology, ascent, descent, output, 0, 1f, 0, 1, 1));
+        device.For(1, 1, new ReactionInitializeShader(topology, flow, output, 0, 1f, 0, 1, 1));
         var result = new Float2[1];
         output.CopyTo(result);
 
-        Assert.Equal(0.34f, result[0].Y, 6);
-        Assert.Equal(0.83f, result[0].X, 6);
+        var expected = 0.22f + 0.16f * RegionPhase(17, 23);
+        Assert.Equal(expected, result[0].Y, 6);
+        Assert.Equal(1f - expected * 0.5f, result[0].X, 6);
     }
 
     [Fact]
@@ -231,9 +482,9 @@ public sealed class TopologicalMaterialFieldEffectTests
 
         using var input = device.AllocateReadWriteBuffer(new[] { 0.1f, 0.4f, 0.8f });
         using var rhs = device.AllocateReadWriteBuffer(new[] { 0.2f, 0.5f, 0.9f });
-        using var connectivity = device.AllocateReadWriteBuffer(new[] { 2, 3, 1 });
+        using var topology = device.AllocateReadWriteBuffer(new[] { new Float4(0f, 0f, 0f, 2f), new Float4(0f, 0f, 0f, 3f), new Float4(0f, 0f, 0f, 1f) });
         using var output = device.AllocateReadWriteBuffer<float>(3);
-        device.For(3, 1, new PoissonJacobiShader(input, rhs, connectivity, output, 0f, 3, 1));
+        device.For(3, 1, new PoissonJacobiShader(input, rhs, topology, output, 0f, 3, 1));
         var result = new float[3];
         output.CopyTo(result);
 
@@ -249,9 +500,9 @@ public sealed class TopologicalMaterialFieldEffectTests
 
         using var input = device.AllocateReadWriteBuffer(new[] { 0f, 0f, 1f });
         using var rhs = device.AllocateReadWriteBuffer(new[] { 0f, 0f, 1f });
-        using var connectivity = device.AllocateReadWriteBuffer(new[] { 2, 1, 0 });
+        using var topology = device.AllocateReadWriteBuffer(new[] { new Float4(0f, 0f, 0f, 2f), new Float4(0f, 0f, 0f, 1f), new Float4(0f, 0f, 0f, 0f) });
         using var output = device.AllocateReadWriteBuffer<float>(3);
-        device.For(3, 1, new PoissonJacobiShader(input, rhs, connectivity, output, 1f, 3, 1));
+        device.For(3, 1, new PoissonJacobiShader(input, rhs, topology, output, 1f, 3, 1));
         var result = new float[3];
         output.CopyTo(result);
 
@@ -280,6 +531,68 @@ public sealed class TopologicalMaterialFieldEffectTests
         value *= 0x846ca68bu;
         value ^= value >> 16;
         return value * 2.3283064e-10f;
+    }
+
+    private static int[] CreateSourcePixels(int width, int height)
+    {
+        var source = new int[width * height];
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var alpha = x == 0 && y == 0 ? 0 : 96 + (x + y) * 10;
+                var red = (x * 35 * alpha + 127) / 255;
+                var green = (y * 35 * alpha + 127) / 255;
+                var blue = ((x + y) * 17 * alpha + 127) / 255;
+                source[y * width + x] = alpha << 24 | red << 16 | green << 8 | blue;
+            }
+        }
+        return source;
+    }
+
+    private static ID2D1Bitmap1 CreateBitmap(ID2D1DeviceContext deviceContext, int[] pixels, int width, int height)
+    {
+        var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+        try
+        {
+            var bitmap = deviceContext.CreateBitmap(
+                new SizeI(width, height),
+                new BitmapProperties1(
+                    new PixelFormat(Format.B8G8R8A8_UNorm, Vortice.DCommon.AlphaMode.Premultiplied),
+                    96f,
+                    96f,
+                    BitmapOptions.None));
+            bitmap.CopyFromMemory(handle.AddrOfPinnedObject(), width * sizeof(int));
+            return bitmap;
+        }
+        finally
+        {
+            handle.Free();
+        }
+    }
+
+    private static void ProcessInteropRoundTrip(
+        TopologicalMaterialGpuInterop interop,
+        ID2D1Image input,
+        ReadWriteBuffer<int> packed,
+        RawRectF bounds,
+        int width,
+        int height)
+    {
+        interop.RenderInput(input, bounds);
+        interop.BeginCompute();
+        try
+        {
+            using ComputeContext context = interop.Device.CreateComputeContext();
+            context.For(width, height, new SharedTextureToPackedBufferShader(interop.SourceTexture, packed, width, height));
+            context.Barrier(packed);
+            context.For(width, height, new PackedBufferToSharedTextureShader(packed, interop.OutputTexture, width, height));
+            context.Submit();
+        }
+        finally
+        {
+            interop.EndCompute();
+        }
     }
 
     private static TopologicalMaterialPipeline.Parameters CreatePipelineParameters(TopologicalMaterialMode material)
