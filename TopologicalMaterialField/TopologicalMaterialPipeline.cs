@@ -205,7 +205,7 @@ internal sealed class TopologicalMaterialPipeline : IDisposable
 
     private void EnsureCapacity(int pixelCount)
     {
-        if (_capacity == pixelCount)
+        if (_capacity >= pixelCount)
             return;
 
         DisposeBuffers();

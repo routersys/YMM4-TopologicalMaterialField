@@ -156,6 +156,73 @@ public sealed class TopologicalMaterialFieldEffectTests
     }
 
     [Fact]
+    public void GpuPipelineReusesCapacityAcrossSmallerFrames()
+    {
+        using var pipeline = TopologicalMaterialPipeline.TryCreate();
+        if (pipeline is null)
+        {
+            Assert.Skip("Direct3D 12 is unavailable.");
+            return;
+        }
+
+        var largeSource = new int[64];
+        var largeDestination = new int[64];
+        var smallSource = new int[16];
+        var smallDestination = new int[16];
+        var parameters = CreatePipelineParameters(TopologicalMaterialMode.Ceramic);
+        pipeline.Process(largeSource, largeDestination, 8, 8, in parameters);
+        pipeline.Process(smallSource, smallDestination, 4, 4, in parameters);
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        pipeline.Process(largeSource, largeDestination, 8, 8, in parameters);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void TopologyResolvePreservesRegionPhase()
+    {
+        var device = TryGetGraphicsDevice();
+        if (device is null)
+            return;
+
+        using var source = device.AllocateReadWriteBuffer(new[] { unchecked((int)0xFFFFFFFF) });
+        using var scalar = device.AllocateReadWriteBuffer(new[] { 0.5f });
+        using var ascent = device.AllocateReadWriteBuffer(new[] { 17 });
+        using var descent = device.AllocateReadWriteBuffer(new[] { 23 });
+        using var topology = device.AllocateReadWriteBuffer<Float4>(1);
+        using var connectivity = device.AllocateReadWriteBuffer<int>(1);
+        device.For(1, 1, new TopologyResolveShader(source, scalar, ascent, descent, topology, connectivity, 1, 1));
+        var result = new Float4[1];
+        topology.CopyTo(result);
+
+        Assert.Equal(RegionPhase(17, 23), result[0].W);
+    }
+
+    [Fact]
+    public void ReactionSeedAmplitudeUsesRegionPhase()
+    {
+        var device = TryGetGraphicsDevice();
+        if (device is null)
+            return;
+
+        using var topology = device.AllocateReadWriteBuffer(new[] { new Float4(1f, 0f, 0f, 0.75f) });
+        using var ascent = device.AllocateReadWriteBuffer(new[] { 0 });
+        using var descent = device.AllocateReadWriteBuffer(new[] { 0 });
+        using var output = device.AllocateReadWriteBuffer<Float2>(1);
+        device.For(1, 1, new ReactionInitializeShader(topology, ascent, descent, output, 0, 1f, 0, 1, 1));
+        var result = new Float2[1];
+        output.CopyTo(result);
+
+        Assert.Equal(0.34f, result[0].Y, 6);
+        Assert.Equal(0.83f, result[0].X, 6);
+    }
+
+    [Fact]
     public void ZeroReconstructionLeavesPoissonDesiredFieldUnchanged()
     {
         var device = TryGetGraphicsDevice();
@@ -202,6 +269,17 @@ public sealed class TopologicalMaterialFieldEffectTests
             Assert.Skip("Direct3D 12 is unavailable.");
             return null;
         }
+    }
+
+    private static float RegionPhase(int ascent, int descent)
+    {
+        var value = (uint)ascent * 0x9e3779b9u ^ (uint)descent * 0x85ebca6bu;
+        value ^= value >> 16;
+        value *= 0x7feb352du;
+        value ^= value >> 15;
+        value *= 0x846ca68bu;
+        value ^= value >> 16;
+        return value * 2.3283064e-10f;
     }
 
     private static TopologicalMaterialPipeline.Parameters CreatePipelineParameters(TopologicalMaterialMode material)

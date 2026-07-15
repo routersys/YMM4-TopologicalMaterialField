@@ -316,8 +316,19 @@ internal readonly partial struct TopologyResolveShader(
         var average = neighborSum / Hlsl.Max(count, 1f);
         var ridge = Hlsl.Max(center - average, 0f);
         var valley = Hlsl.Max(average - center, 0f);
-        topology[index] = new Float4(boundary / Hlsl.Max(count, 1f), ridge, valley, 0f);
+        topology[index] = new Float4(boundary / Hlsl.Max(count, 1f), ridge, valley, Hash01(high, low));
         connectivity[index] = connectionMask;
+    }
+
+    private float Hash01(int a, int b)
+    {
+        var value = (uint)a * 0x9e3779b9u ^ (uint)b * 0x85ebca6bu;
+        value ^= value >> 16;
+        value *= 0x7feb352du;
+        value ^= value >> 15;
+        value *= 0x846ca68bu;
+        value ^= value >> 16;
+        return value * 2.3283064e-10f;
     }
 }
 
@@ -573,7 +584,7 @@ internal readonly partial struct ReactionInitializeShader(
         var random = hash * 2.3283064e-10f;
         var probability = material == 5 ? 0.38f : material == 4 ? 0.24f : 0.18f;
         var seeded = random < probability || topologyValue.X > 0.45f;
-        var v = seeded ? 0.22f + 0.16f * random : 0f;
+        var v = seeded ? 0.22f + 0.16f * topologyValue.W : 0f;
         output[index] = new Float2(1f - v * 0.5f, v);
     }
 
