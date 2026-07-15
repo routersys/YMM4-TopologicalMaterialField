@@ -5,7 +5,7 @@ namespace TopologicalMaterialField;
 internal sealed class TopologicalMaterialPipeline : IDisposable
 {
     private readonly GraphicsDevice _device;
-    private ReadOnlyBuffer<int>? _source;
+    private ReadWriteBuffer<int>? _source;
     private ReadWriteBuffer<Float4>? _features;
     private ReadWriteBuffer<float>? _scalarA;
     private ReadWriteBuffer<float>? _scalarB;
@@ -14,13 +14,12 @@ internal sealed class TopologicalMaterialPipeline : IDisposable
     private ReadWriteBuffer<int>? _descentA;
     private ReadWriteBuffer<int>? _descentB;
     private ReadWriteBuffer<Float4>? _topology;
+    private ReadWriteBuffer<int>? _connectivity;
     private ReadWriteBuffer<Float4>? _transported;
     private ReadWriteBuffer<Float2>? _reactionA;
     private ReadWriteBuffer<Float2>? _reactionB;
-    private ReadWriteBuffer<float>? _poissonRhs;
     private ReadWriteBuffer<float>? _poissonA;
     private ReadWriteBuffer<float>? _poissonB;
-    private ReadWriteBuffer<int>? _output;
     private int _capacity;
 
     private TopologicalMaterialPipeline(GraphicsDevice device)
@@ -54,121 +53,163 @@ internal sealed class TopologicalMaterialPipeline : IDisposable
         var descentA = _descentA!;
         var descentB = _descentB!;
         var topology = _topology!;
+        var connectivity = _connectivity!;
         var transported = _transported!;
         var reactionA = _reactionA!;
         var reactionB = _reactionB!;
-        var poissonRhs = _poissonRhs!;
         var poissonA = _poissonA!;
         var poissonB = _poissonB!;
-        var output = _output!;
 
         sourceBuffer.CopyFrom(source[..pixelCount]);
-        _device.For(width, height, new MaterialPreprocessShader(sourceBuffer, features, scalarA, width, height));
-
-        var smoothIterations = Math.Clamp((int)MathF.Round(parameters.TopologyScale), 1, 8);
-        for (var iteration = 0; iteration < smoothIterations; iteration++)
+        var spatialDenominator = MathF.Max(parameters.TopologyScale * parameters.TopologyScale, 1f);
+        var spatialWeight1 = MathF.Exp(-1f / spatialDenominator);
+        var spatialWeight2 = MathF.Exp(-2f / spatialDenominator);
+        var spatialWeight4 = MathF.Exp(-4f / spatialDenominator);
+        var spatialWeight5 = MathF.Exp(-5f / spatialDenominator);
+        var spatialWeight8 = MathF.Exp(-8f / spatialDenominator);
+        using (ComputeContext context = _device.CreateComputeContext())
         {
-            _device.For(width, height, new ScalarSmoothShader(sourceBuffer, scalarA, scalarB, parameters.TopologyScale, width, height));
-            (scalarA, scalarB) = (scalarB, scalarA);
-        }
+            context.For(width, height, new MaterialPreprocessShader(sourceBuffer, features, scalarA, width, height));
+            context.Barrier(features);
+            context.Barrier(scalarA);
 
-        _device.For(width, height, new FlowInitializeShader(sourceBuffer, scalarA, ascentA, descentA, parameters.FeatureThreshold, width, height));
+            var smoothIterations = Math.Clamp((int)MathF.Round(parameters.TopologyScale), 1, 8);
+            for (var iteration = 0; iteration < smoothIterations; iteration++)
+            {
+                context.For(width, height, new ScalarSmoothShader(
+                    sourceBuffer,
+                    scalarA,
+                    scalarB,
+                    spatialWeight1,
+                    spatialWeight2,
+                    spatialWeight4,
+                    spatialWeight5,
+                    spatialWeight8,
+                    width,
+                    height));
+                (scalarA, scalarB) = (scalarB, scalarA);
+                context.Barrier(scalarA);
+            }
 
-        var flowIterations = TopologicalMaterialSettings.CeilLog2(pixelCount);
-        for (var iteration = 0; iteration < flowIterations; iteration++)
-        {
-            _device.For(width, height, new FlowCompressShader(ascentA, descentA, ascentB, descentB, pixelCount, width, height));
-            (ascentA, ascentB) = (ascentB, ascentA);
-            (descentA, descentB) = (descentB, descentA);
-        }
+            context.For(width, height, new FlowInitializeShader(sourceBuffer, scalarA, ascentA, descentA, parameters.FeatureThreshold, width, height));
+            context.Barrier(ascentA);
+            context.Barrier(descentA);
 
-        _device.For(width, height, new TopologyResolveShader(sourceBuffer, scalarA, ascentA, descentA, topology, width, height));
+            var flowIterations = TopologicalMaterialSettings.CeilLog2(pixelCount);
+            for (var iteration = 0; iteration < flowIterations; iteration++)
+            {
+                context.For(width, height, new FlowCompressShader(ascentA, descentA, ascentB, descentB, pixelCount, width, height));
+                (ascentA, ascentB) = (ascentB, ascentA);
+                (descentA, descentB) = (descentB, descentA);
+                context.Barrier(ascentA);
+                context.Barrier(descentA);
+            }
 
-        var quality = TopologicalMaterialSettings.GetQuality(parameters.Quality);
-        _device.For(width, height, new SlicedTransportShader(
-            features,
-            topology,
-            ascentA,
-            descentA,
-            transported,
-            parameters.Material,
-            parameters.Distribution,
-            parameters.ColorVariation,
-            parameters.PatternScale,
-            parameters.Seed,
-            quality.RegionSamples,
-            width,
-            height));
+            context.For(width, height, new TopologyResolveShader(sourceBuffer, scalarA, ascentA, descentA, topology, connectivity, width, height));
+            context.Barrier(topology);
+            context.Barrier(connectivity);
 
-        _device.For(width, height, new ReactionInitializeShader(
-            topology,
-            ascentA,
-            descentA,
-            reactionA,
-            parameters.Material,
-            parameters.PatternScale,
-            parameters.Seed,
-            width,
-            height));
-
-        for (var iteration = 0; iteration < quality.ReactionIterations; iteration++)
-        {
-            _device.For(width, height, new ReactionDiffusionShader(
-                reactionA,
-                reactionB,
+            var quality = TopologicalMaterialSettings.GetQuality(parameters.Quality);
+            context.For(width, height, new SlicedTransportShader(
+                features,
+                topology,
                 ascentA,
                 descentA,
+                transported,
                 parameters.Material,
+                parameters.Distribution,
+                parameters.ColorVariation,
                 parameters.PatternScale,
+                parameters.Seed,
+                quality.RegionSamples,
                 width,
                 height));
-            (reactionA, reactionB) = (reactionB, reactionA);
+            context.Barrier(transported);
+
+            context.For(width, height, new ReactionInitializeShader(
+                topology,
+                ascentA,
+                descentA,
+                reactionA,
+                parameters.Material,
+                parameters.PatternScale,
+                parameters.Seed,
+                width,
+                height));
+            context.Barrier(reactionA);
+
+            for (var iteration = 0; iteration < quality.ReactionIterations; iteration++)
+            {
+                context.For(width, height, new ReactionDiffusionShader(
+                    reactionA,
+                    reactionB,
+                    ascentA,
+                    descentA,
+                    parameters.Material,
+                    parameters.PatternScale,
+                    width,
+                    height));
+                (reactionA, reactionB) = (reactionB, reactionA);
+                context.Barrier(reactionA);
+            }
+
+            context.For(width, height, new PoissonRhsShader(
+                scalarA,
+                transported,
+                topology,
+                reactionA,
+                connectivity,
+                scalarB,
+                poissonA,
+                parameters.PatternStrength,
+                parameters.Reconstruction,
+                width,
+                height));
+            context.Barrier(scalarB);
+            context.Barrier(poissonA);
+
+            if (parameters.Reconstruction > 0f)
+            {
+                for (var iteration = 0; iteration < quality.PoissonIterations; iteration++)
+                {
+                    context.For(width, height, new PoissonJacobiShader(
+                        poissonA,
+                        scalarB,
+                        connectivity,
+                        poissonB,
+                        parameters.Reconstruction,
+                        width,
+                        height));
+                    (poissonA, poissonB) = (poissonB, poissonA);
+                    context.Barrier(poissonA);
+                }
+            }
+
+            context.For(width, height, new MaterialFinalizeShader(
+                sourceBuffer,
+                transported,
+                topology,
+                reactionA,
+                poissonA,
+                connectivity,
+                parameters.Material,
+                parameters.PatternStrength,
+                parameters.Relief,
+                parameters.LightAngle,
+                parameters.LightElevation,
+                width,
+                height));
         }
-
-        _device.For(width, height, new PoissonRhsShader(
-            scalarA,
-            transported,
-            topology,
-            reactionA,
-            poissonRhs,
-            poissonA,
-            parameters.PatternStrength,
-            parameters.Reconstruction,
-            width,
-            height));
-
-        var screening = 1f + parameters.Reconstruction * 6f;
-        for (var iteration = 0; iteration < quality.PoissonIterations; iteration++)
-        {
-            _device.For(width, height, new PoissonJacobiShader(poissonA, poissonRhs, poissonB, screening, width, height));
-            (poissonA, poissonB) = (poissonB, poissonA);
-        }
-
-        _device.For(width, height, new MaterialFinalizeShader(
-            sourceBuffer,
-            transported,
-            topology,
-            reactionA,
-            poissonA,
-            output,
-            parameters.Material,
-            parameters.PatternStrength,
-            parameters.Relief,
-            parameters.LightAngle,
-            parameters.LightElevation,
-            width,
-            height));
-
-        output.CopyTo(destination[..pixelCount]);
+        sourceBuffer.CopyTo(destination[..pixelCount]);
     }
 
     private void EnsureCapacity(int pixelCount)
     {
-        if (_capacity >= pixelCount)
+        if (_capacity == pixelCount)
             return;
 
         DisposeBuffers();
-        _source = _device.AllocateReadOnlyBuffer<int>(pixelCount);
+        _source = _device.AllocateReadWriteBuffer<int>(pixelCount);
         _features = _device.AllocateReadWriteBuffer<Float4>(pixelCount);
         _scalarA = _device.AllocateReadWriteBuffer<float>(pixelCount);
         _scalarB = _device.AllocateReadWriteBuffer<float>(pixelCount);
@@ -177,13 +218,12 @@ internal sealed class TopologicalMaterialPipeline : IDisposable
         _descentA = _device.AllocateReadWriteBuffer<int>(pixelCount);
         _descentB = _device.AllocateReadWriteBuffer<int>(pixelCount);
         _topology = _device.AllocateReadWriteBuffer<Float4>(pixelCount);
+        _connectivity = _device.AllocateReadWriteBuffer<int>(pixelCount);
         _transported = _device.AllocateReadWriteBuffer<Float4>(pixelCount);
         _reactionA = _device.AllocateReadWriteBuffer<Float2>(pixelCount);
         _reactionB = _device.AllocateReadWriteBuffer<Float2>(pixelCount);
-        _poissonRhs = _device.AllocateReadWriteBuffer<float>(pixelCount);
         _poissonA = _device.AllocateReadWriteBuffer<float>(pixelCount);
         _poissonB = _device.AllocateReadWriteBuffer<float>(pixelCount);
-        _output = _device.AllocateReadWriteBuffer<int>(pixelCount);
         _capacity = pixelCount;
     }
 
@@ -198,13 +238,12 @@ internal sealed class TopologicalMaterialPipeline : IDisposable
         _descentA?.Dispose();
         _descentB?.Dispose();
         _topology?.Dispose();
+        _connectivity?.Dispose();
         _transported?.Dispose();
         _reactionA?.Dispose();
         _reactionB?.Dispose();
-        _poissonRhs?.Dispose();
         _poissonA?.Dispose();
         _poissonB?.Dispose();
-        _output?.Dispose();
         _source = null;
         _features = null;
         _scalarA = null;
@@ -214,13 +253,12 @@ internal sealed class TopologicalMaterialPipeline : IDisposable
         _descentA = null;
         _descentB = null;
         _topology = null;
+        _connectivity = null;
         _transported = null;
         _reactionA = null;
         _reactionB = null;
-        _poissonRhs = null;
         _poissonA = null;
         _poissonB = null;
-        _output = null;
         _capacity = 0;
     }
 

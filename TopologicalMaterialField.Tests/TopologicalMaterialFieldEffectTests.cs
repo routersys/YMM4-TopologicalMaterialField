@@ -1,3 +1,5 @@
+using ComputeSharp;
+
 namespace TopologicalMaterialField.Tests;
 
 public sealed class TopologicalMaterialFieldEffectTests
@@ -151,6 +153,55 @@ public sealed class TopologicalMaterialFieldEffectTests
         var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
         Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void ZeroReconstructionLeavesPoissonDesiredFieldUnchanged()
+    {
+        var device = TryGetGraphicsDevice();
+        if (device is null)
+            return;
+
+        using var input = device.AllocateReadWriteBuffer(new[] { 0.1f, 0.4f, 0.8f });
+        using var rhs = device.AllocateReadWriteBuffer(new[] { 0.2f, 0.5f, 0.9f });
+        using var connectivity = device.AllocateReadWriteBuffer(new[] { 2, 3, 1 });
+        using var output = device.AllocateReadWriteBuffer<float>(3);
+        device.For(3, 1, new PoissonJacobiShader(input, rhs, connectivity, output, 0f, 3, 1));
+        var result = new float[3];
+        output.CopyTo(result);
+
+        Assert.Equal(new[] { 0.2f, 0.5f, 0.9f }, result);
+    }
+
+    [Fact]
+    public void PoissonJacobiDoesNotCrossDisconnectedRegion()
+    {
+        var device = TryGetGraphicsDevice();
+        if (device is null)
+            return;
+
+        using var input = device.AllocateReadWriteBuffer(new[] { 0f, 0f, 1f });
+        using var rhs = device.AllocateReadWriteBuffer(new[] { 0f, 0f, 1f });
+        using var connectivity = device.AllocateReadWriteBuffer(new[] { 2, 1, 0 });
+        using var output = device.AllocateReadWriteBuffer<float>(3);
+        device.For(3, 1, new PoissonJacobiShader(input, rhs, connectivity, output, 1f, 3, 1));
+        var result = new float[3];
+        output.CopyTo(result);
+
+        Assert.Equal(new[] { 0f, 0f, 1f }, result);
+    }
+
+    private static GraphicsDevice? TryGetGraphicsDevice()
+    {
+        try
+        {
+            return GraphicsDevice.GetDefault();
+        }
+        catch
+        {
+            Assert.Skip("Direct3D 12 is unavailable.");
+            return null;
+        }
     }
 
     private static TopologicalMaterialPipeline.Parameters CreatePipelineParameters(TopologicalMaterialMode material)

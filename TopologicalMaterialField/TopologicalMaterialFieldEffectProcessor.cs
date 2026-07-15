@@ -27,6 +27,9 @@ internal sealed class TopologicalMaterialFieldEffectProcessor : VideoEffectProce
     private int _bufferCapacity;
     private bool _isFirst = true;
     private bool _hasOutput;
+    private bool _hasSourceCache;
+    private int _lastFrame;
+    private RawRectF _lastBounds;
     private Parameters _parameters;
 
     public TopologicalMaterialFieldEffectProcessor(IGraphicsDevicesAndContext devices, TopologicalMaterialFieldEffect item)
@@ -66,6 +69,13 @@ internal sealed class TopologicalMaterialFieldEffectProcessor : VideoEffectProce
         if (_isFirst || _parameters.Amount != amount)
             _effect.Amount = amount;
 
+        if (amount <= 0f)
+        {
+            _parameters = parameters with { Amount = amount };
+            _isFirst = false;
+            return effectDescription.DrawDescription;
+        }
+
         var dc = _devices.DeviceContext;
         var bounds = dc.GetImageLocalBounds(input);
         var width = (int)Math.Ceiling(bounds.Right - bounds.Left);
@@ -75,10 +85,14 @@ internal sealed class TopologicalMaterialFieldEffectProcessor : VideoEffectProce
             return effectDescription.DrawDescription;
 
         EnsureResources(dc, width, height);
-        var sourceChanged = RenderSource(dc, bounds, width, height);
+        var sourcePossiblyChanged = _isFirst
+            || !_hasSourceCache
+            || _lastFrame != frame
+            || !_lastBounds.Equals(bounds);
+        var sourceChanged = sourcePossiblyChanged && RenderSource(dc, bounds, width, height);
         var parametersChanged = _isFirst || !_parameters.PipelineEquals(parameters);
 
-        if (amount > 0f && (sourceChanged || parametersChanged || !_hasOutput))
+        if (sourceChanged || parametersChanged || !_hasOutput)
         {
             var pixelCount = (int)pixelCountLong;
             var pipelineParameters = new TopologicalMaterialPipeline.Parameters(
@@ -107,6 +121,9 @@ internal sealed class TopologicalMaterialFieldEffectProcessor : VideoEffectProce
             _hasOutput = true;
         }
 
+        _hasSourceCache = true;
+        _lastFrame = frame;
+        _lastBounds = bounds;
         _parameters = parameters with { Amount = amount };
         _isFirst = false;
         return effectDescription.DrawDescription;
@@ -143,12 +160,13 @@ internal sealed class TopologicalMaterialFieldEffectProcessor : VideoEffectProce
         _effect?.SetInput(1, null, true);
         _isFirst = true;
         _hasOutput = false;
+        _hasSourceCache = false;
     }
 
     private bool RenderSource(ID2D1DeviceContext dc, RawRectF bounds, int width, int height)
     {
         var pixelCount = width * height;
-        var reused = _sourcePixels is not null && _bufferCapacity >= pixelCount;
+        var reused = _sourcePixels is not null && _bufferCapacity == pixelCount;
         EnsureBuffers(pixelCount);
 
         var previousTarget = dc.Target;
@@ -231,11 +249,12 @@ internal sealed class TopologicalMaterialFieldEffectProcessor : VideoEffectProce
         _bitmapWidth = width;
         _bitmapHeight = height;
         _hasOutput = false;
+        _hasSourceCache = false;
     }
 
     private void EnsureBuffers(int pixelCount)
     {
-        if (_bufferCapacity >= pixelCount && _sourcePixels is not null && _outputPixels is not null)
+        if (_bufferCapacity == pixelCount && _sourcePixels is not null && _outputPixels is not null)
             return;
         _sourcePixels = new int[pixelCount];
         _outputPixels = new int[pixelCount];
