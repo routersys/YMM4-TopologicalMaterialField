@@ -199,13 +199,11 @@ YukkuriMovieMaker4（YMM4）上で動作する、現在のフレームから色�
 
 ## サードパーティライセンス
 
-本プラグインは以下のソフトウェアを使用しています。リリースパッケージには、実行時に同梱するソフトウェアのライセンスと第三者通知を収録しています。
+本プラグインは以下のサードパーティソフトウェアを同梱・使用しています。ライセンスの全文は、リポジトリの [`.github/LICENSE/ComputeSharp.txt`](.github/LICENSE/ComputeSharp.txt) と、配布パッケージの `LICENSE` フォルダーに収録しています。
 
-| ソフトウェア | 用途 | ライセンス |
-|---|---|---|
-| [ComputeSharp](https://github.com/routersys/ComputeSharp) | Direct3D 12計算シェーダーとDirect3D 11・12共有処理 | [MIT License](ComputeSharp/LICENSE) |
-
-ComputeSharpは本プラグイン専用のアセンブリ名でビルドし、`TopologicalMaterialField.ComputeSharp.dll`と`TopologicalMaterialField.ComputeSharp.Core.dll`として同梱します。
+| ソフトウェア | 用途 | ライセンス | 著作権表示 |
+|---|---|---|---|
+| [ComputeSharp](https://github.com/routersys/ComputeSharp) | Direct3D 12計算シェーダーとDirect3D 11・12共有処理 | MIT License | Copyright (c) 2024 Sergio Pedri |
 
 ---
 
