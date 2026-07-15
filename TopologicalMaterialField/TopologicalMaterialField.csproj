@@ -79,7 +79,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<Compile Include="..\GitHubUpdateNotifier\GitHubUpdateNotifier\*.cs" LinkBase="GitHubUpdateNotifier" />
+		<Compile Include="..\YMM4-GitHubUpdateNotifier\GitHubUpdateNotifier\*.cs" LinkBase="GitHubUpdateNotifier" />
 	</ItemGroup>
 
 	<ItemGroup>
