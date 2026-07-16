@@ -11,6 +11,8 @@ YukkuriMovieMaker4（YMM4）上で動作する、現在のフレームから色�
 陶器、鉱物、酸化金属、羊皮紙、氷晶、布地の6種類から材質を選択できます。
 強さ、位相尺度、分布輸送、凹凸、照明などの11項目はアニメーションに対応しています。
 
+![Image](https://github.com/routersys/YMM4-TopologicalMaterialField/blob/main/docs/TopologicalMaterialField.png)
+
 ---
 
 ## 目次
