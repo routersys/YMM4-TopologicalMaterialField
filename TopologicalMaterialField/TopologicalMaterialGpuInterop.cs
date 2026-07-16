@@ -127,6 +127,7 @@ internal sealed class TopologicalMaterialGpuInterop : IDisposable
             throw new InvalidOperationException();
         var value = ++_fenceValue;
         _d3dContext.Signal(_fence, value);
+        _d3dContext.Flush();
         InteropServices.WaitForSharedFence(_device, (void*)_d3d12Fence, value);
         _computeActive = true;
     }
@@ -153,6 +154,7 @@ internal sealed class TopologicalMaterialGpuInterop : IDisposable
             throw new InvalidOperationException();
         var value = ++_fenceValue;
         _d3dContext.Signal(_fence, value);
+        _d3dContext.Flush();
         _fence.SetEventOnCompletion(value, 0);
     }
 
