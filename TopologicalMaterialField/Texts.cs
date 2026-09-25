@@ -1,10 +1,8 @@
 using YukkuriMovieMaker.Generator;
 
-namespace TopologicalMaterialField
-{
-    [AutoGenLocalizer]
-    partial class Texts
-    {
+namespace TopologicalMaterialField;
 
-    }
+[AutoGenLocalizer]
+partial class Texts
+{
 }
